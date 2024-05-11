@@ -1,3 +1,4 @@
+import glob
 import os
 import sys
 import create_graph as cg
@@ -25,22 +26,28 @@ def create_graph(files:list, flag:str="f"):
         print("Invalid flag. Please provide a valid flag.")
         return None
 
-def extract_files(project_path:str, filetype:str=".py")-> list:
-    """ 
-    Extracts files from a project directory.
-    Args:
-        project_path (str): Path to the project directory.
-        filetype (str): File type to extract from the project directory.
-    Returns:
-        list: List of files in the project directory.
+def find_files_by_type(directory, filetype):
     """
+    Recursively searches the given directory for files of the specified type.
 
-    # print("Extracting files from project: " + project_path)
-    dir_list = []
-    for file in os.listdir(project_path):
-        if file.endswith(filetype):
-            dir_list.append(file)
-    return  dir_list
+    Args:
+    - directory (str): The directory to search in.
+    - filetype (str): The file type to search for (e.g., 'txt', 'py', 'jpg').
+
+    Returns:
+    - file_paths (list): A list of strings, where each element is the path to a file of the specified type.
+    """
+    file_paths = []
+
+    # Walk through the directory and its subdirectories
+    for root, _, files in os.walk(directory):
+        for file in files:
+            # Check if the file extension matches the specified filetype
+            if file.endswith(filetype):
+                relativePath = os.path.relpath(os.path.join(root, file), directory)
+                file_paths.append(relativePath)
+
+    return file_paths
 
 def file_csv(l:list[str], path:str)-> bool:
     try:
@@ -61,29 +68,41 @@ def display_graph(graph):
     plt.show()
     
 
-## This project will be made to first read each file in a project, then create nodes for each file, and then create edges between the nodes based on the imports of each file.
-if __name__ == "__main__":
+def main():
     size = len(sys.argv)
     if size < 2:
-        print("Invalid input. Please provide a path to a project. \n Example: python main.py /path/to/project -f")
+        print("Invalid input. For help do, '-h' or '--help'")
         sys.exit()
-    # if sys.argv[2] == "-f":
-    #     project_path = sys.argv[1]
-    #     files = extract_files(project_path)
-    #     file_csv(files, project_path)
-    #     sys.exit()
+
+    if sys.argv[1] == "-h" or sys.argv[1] == "--help":
+        print("Usage: python main.py <project_path> <filetype> [Options]")
+        print("Options:")
+        print("\t -f : (DEFAULT) Create a graph based on file to file dependancies, each file is a node, with edges between files that are dependant on each other.")
+        print("\t\t should have a depth passed aling with this option. Example: python main.py <project_path> <filetype> -f 2")
+        print("\t -i : Create a graph based on import dependancies. Shows a graph with each file as a node, with edges between files and the imports that file depends on. Node size is based on the number of imports.")
+        print("\t -c : Create a graph based on class dependancy dependancies. Shows each class as a node, with edges between classes that are dependant on each other. The more dependancies between classes, the bigger the edge.")
+        print("\t -g : Create a graph based on git commits. Shows the files with more commits as bigger and less commits as smaller")
+        sys.exit()
+
+
     project_path = sys.argv[1]
     filetype = sys.argv[2]
+    graphType = sys.argv[3] if size == 4 else "f"
+    depth = sys.argv[3]
+
+    print("looking for files in project: " + project_path + " with type: " + filetype)
+
+    # Filters the directory and returns only files of type 'filetype'
+    files = find_files_by_type(project_path, filetype)
+
+    for file in files: 
+        print("filepath: "+ file)
+    # Create a graph showing file dependencies
+
+## This project will be made to first read each file in a project, then create nodes for each file, and then create edges between the nodes based on the imports of each file.
+if __name__ == "__main__":
+    main()
     
-    files = extract_files(project_path, filetype)
-    # file_csv(files, project_path)
-
-
-    print("Creating graph from project: " + project_path)
-    graph = create_graph(files)
-
-
-    display_graph(graph)
 
 
     
