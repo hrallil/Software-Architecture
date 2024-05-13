@@ -56,12 +56,12 @@ def abstracted_to_top_level(G:nx.DiGraph|nx.Graph, depth:int=1)-> nx.DiGraph:
     return aG
 
 # Draw a graph
-def draw_graph(G, size, commit_counts, **args):
+def draw_graph(G, size, commit_counts, color, **args):
     print("displaying graph")
     plt.figure(figsize=size)
     node_sizes = calculate_node_sizes(G, commit_counts)
     pos = nx.spring_layout(G)
-    nx.draw(G,pos, node_size=node_sizes,**args)
+    nx.draw(G,pos, node_size=node_sizes, node_color=color, **args)
     plt.show()
 
 
@@ -77,10 +77,10 @@ def calculate_node_sizes(G, commit_counts):
     - list: A list of node sizes corresponding to the nodes in the graph.
     """
     node_sizes = []
+    max_val = max(commit_counts.values())
+    min_val = min(commit_counts.values())
     for node in G.nodes():
-        print("node", node)
-
-        size = commit_counts.get(node, 1) **12 + 1000 # Default size is 100 if not found in commit_counts
+        size = 100 + ((commit_counts.get(node, 1)-min_val)/(max_val - min_val)) * 900
         node_sizes.append(size)
     return node_sizes
 
@@ -173,22 +173,22 @@ def get_commit_count_file(file_name):
     commit_count = repo.git.rev_list('--count', 'HEAD', '--', file_name)
     return commit_count
 
-def get_commit_count_repo(repo:list[str]):
-    print("Getting commits from repo")
+def get_commit_count_repo(repo:list[str])->dict[str, int]:
+    print("========== Getting commits from repository ===========")
     result = {}
     for file in repo: 
         commit_count = get_commit_count_file(file)
         result.update({file: int(commit_count)})
     return result
 
-def get_abs_commits(commits:dict, depth:int)->dict:
+def get_abstraction_of(files:dict, depth:int)->dict:
     result = {}
-    for file in commits:
-        file_new = top_level_package(module_name_from_file_path(file), depth)
+    for file in files:
+        file_new = "zeeguu."+top_level_package(module_name_from_file_path(file), depth)
         if file_new in result:
-            result["zeeguu."+file_new] += int(commits[file]) # The "zeeguu."+ is added to make the module name consistent with the graph. #TODO     This could be handled better
+            result[file_new] += int(files[file]) # The "zeeguu."+ is added to make the module name consistent with the graph. #TODO     This could be handled better
         else:
-            result["zeeguu."+file_new] = int(commits[file])
+            result[file_new] = int(files[file])
     return result
 
 def filter_files(files:list[str])->list[str]:
@@ -198,7 +198,54 @@ def filter_files(files:list[str])->list[str]:
             result.append(file)
     return result
 
+def get_test_modules(modules:list[str])->list[str]:
+    result = []
+    for module in modules:
+        if "test" in module:
+            result.append(module_name_from_file_path(module))
+    return result
+
 CODE_ROOT_FOLDER = sys.argv[1]
+
+def get_tested_files(files:list[str], test_files:list[str])->dict[str, int]:
+    result = {}
+    for file in files:
+        test_count = get_sum_tested(module_name_from_file_path(file), test_files)
+        result[file] = test_count
+
+    return result
+
+
+def get_sum_tested(file:str, test_files:list[str])->int:
+    result = 0
+    file = file.split(".")[-1]
+    for test in test_files:
+        if file in test:
+            result += 1
+    return result
+
+
+# Define a function to interpolate between red and green based on a given value
+def interpolate_color(value):
+    r = 1.0 - value  # Red component decreases as value increases
+    g = value       # Green component increases as value increases
+    b = 0.0         # Blue component stays constant
+    return (r, g, b)
+
+def get_color(color_values, G):
+    color_map= []
+    for node in G.nodes:
+        print("node: ", node)
+
+        try: 
+            val = color_values[str(node)]
+        except:
+            val = 0
+
+        color_value =  val / max(color_values.values())
+        color = interpolate_color(color_value)
+        color_map.append(color)
+    return color_map
 
 def main():
 
@@ -215,17 +262,32 @@ def main():
     all_files = find_files_by_type(programPath, ".py")
 
     relevant_files = filter_files(all_files)
-    commits = get_commit_count_repo(relevant_files)
+    all_tests = get_test_modules(all_files)
 
-    abstracted_commits = get_abs_commits(commits, depth-1)
-    # print("size of abstracted commits", len(abstracted_commits))
-    # for commit in abstracted_commits:
-    #     print(f"{commit}: {abstracted_commits[commit]}")
+    tested_files = get_tested_files(relevant_files, all_tests)
+    abstracted_testing_files = get_abstraction_of(tested_files, depth-1)
+
+    print("======================== abstracted testing files =====================")
+    for each in abstracted_testing_files:
+        print(each, abstracted_testing_files[each])
+    
+    
+    commits = get_commit_count_repo(relevant_files)
+    abstracted_commits = get_abstraction_of(commits, depth-1)
+
+    print("============================ abstracted commits ==========================")
+    for each in abstracted_commits:
+        print(each, abstracted_commits[each])
 
     DG = dependencies_digraph(programPath)
-    # draw_graph(DG, (40,40), with_labels=True)
     ADG = abstracted_to_top_level(DG, depth)
-    draw_graph(ADG, (8,8),abstracted_commits , with_labels=True)
+
+    color_map = get_color(abstracted_testing_files, ADG)
+
+    for node in ADG.nodes:
+        print("node: ", node)
+
+    draw_graph(ADG, (8,8), abstracted_commits, color_map, with_labels=True)
 
 if __name__ == "__main__":
     main()
