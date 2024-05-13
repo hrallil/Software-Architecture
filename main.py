@@ -1,10 +1,7 @@
-import glob
 import os
 import sys
-import create_graph as cg
 import matplotlib.pyplot as plt
 import networkx as nx
-import pathlib
 from pathlib import Path
 import networkx as nx
 import re
@@ -36,14 +33,20 @@ def find_files_by_type(directory:str, filetype:str)-> list[str]:
 
 
 
-def top_level_package(module_name, depth=1):
+def top_level_package(module_name:str, depth:int=1)->str:
+    """
+    Extracts the top level package of a module name. \n
+    The depth parameter specifies how many levels of the package name to keep. \n
+    """
     components = module_name.split(".")
     return ".".join(components[:depth])
 
-# Create a graph that abstracts the dependencies to the top level package. 
-# This is done by splitting all the module names by "." and then joining the first n components.
-# After splitting and pruning away all module depths beyond the specified depth, the graph is created by adding an edge between the source and destination modules.
+
 def abstracted_to_top_level(G:nx.DiGraph|nx.Graph, depth:int=1)-> nx.DiGraph:
+    """
+    Abstracts a graph to a specified depth. \n
+    The depth parameter specifies how many levels of the package name to keep. \n
+    """
     aG = nx.DiGraph()
     for each in G.edges():
         src = top_level_package(each[0], depth)
@@ -51,21 +54,23 @@ def abstracted_to_top_level(G:nx.DiGraph|nx.Graph, depth:int=1)-> nx.DiGraph:
 
         if src != dst:
           aG.add_edge(src, dst)
-        #   print(f"Adding edge from {src} to {dst}") # for debugging
 
     return aG
 
 # Draw a graph
-def draw_graph(G, size, commit_counts, color, **args):
-    print("displaying graph")
+def draw_graph(G:nx.DiGraph|nx.Graph, size, commit_counts:dict, color:dict=None, **args)->None:
+    """
+    draws a graph if given a colour scheme and a size scheme.
+    """
+    print("=================== Displaying graph ===================")
     plt.figure(figsize=size)
-    node_sizes = calculate_node_sizes(G, commit_counts)
+    node_sizes = calculate_node_sizes(G, commit_counts) if commit_counts else [100]*len(G.nodes)
     pos = nx.spring_layout(G)
     nx.draw(G,pos, node_size=node_sizes, node_color=color, **args)
     plt.show()
 
 
-def calculate_node_sizes(G, commit_counts):
+def calculate_node_sizes(G:nx.DiGraph|nx.Graph, commit_counts:dict)->list[int]:
     """
     Calculate node sizes based on commit counts.
 
@@ -80,12 +85,17 @@ def calculate_node_sizes(G, commit_counts):
     max_val = max(commit_counts.values())
     min_val = min(commit_counts.values())
     for node in G.nodes():
-        size = 100 + ((commit_counts.get(node, 1)-min_val)/(max_val - min_val)) * 900
+        size = 100 + ((commit_counts.get(node, 1)-min_val)/(max_val - min_val)) * 9900
         node_sizes.append(size)
     return node_sizes
 
-# Extract all the imports and module references from a file and create a directed graph of the dependencies between the modules.
-def dependencies_digraph(code_root_folder):
+def dependencies_digraph(code_root_folder:str)->nx.DiGraph:
+    """
+    Creates a graph based on a directory.
+    This graph will show a model view of the directory. \n
+    The nodes are the modules and the edges are the imports. \n
+    Every file will have to import another file if it wants to use it, letting this graph be a good representation of the dependencies between the modules. \n
+    """
     files = Path(code_root_folder).rglob("*.py")
 
     G = nx.DiGraph()
@@ -108,7 +118,7 @@ def dependencies_digraph(code_root_folder):
 
     return G
 
-def module_name_from_file_path(full_path):
+def module_name_from_file_path(full_path:str)->str:
     """
     Converts a path to a module name. In puthon every file .py, is also a module such that zeegu.core.model.User <=> ./zeeguu/core/model/user.py
     """
@@ -122,7 +132,7 @@ def module_name_from_file_path(full_path):
     return file_name
 
 
-def import_from_line(line):
+def import_from_line(line:str)->str:
     """
     Regex patterns used
     -  ^   beginning of line
@@ -139,10 +149,11 @@ def import_from_line(line):
       return None
 
 
-# extracts all the imported modules from a file
-# returns a module of the form zeeguu_core.model.bookmark, e.g.
-def imports_from_file(file):
-
+def imports_from_file(file)->list[str]:
+    """
+    Extracts all the imported modules from a file\n
+    Returns a module of the form zeeguu_core.model.bookmark
+    """
     all_imports = []
 
     lines = [line for line in open(file)]
@@ -165,15 +176,24 @@ def relevant_module(module_name:str)->bool:
         return True
     return False
 
-def file_path(file_name):
+def file_path(file_name:str)->str:
+    """
+    Concatinates the CODE_ROOT_FOLDER with the file name
+    """
     return CODE_ROOT_FOLDER+file_name
 
-def get_commit_count_file(file_name):
+def get_commit_count_file(file_name:str)->int:
+    """
+    retrieves the commit history for a file
+    """
     repo = Repo(CODE_ROOT_FOLDER)
     commit_count = repo.git.rev_list('--count', 'HEAD', '--', file_name)
     return commit_count
 
 def get_commit_count_repo(repo:list[str])->dict[str, int]:
+    """
+    Retrieves the commit history for a repository
+    """
     print("========== Getting commits from repository ===========")
     result = {}
     for file in repo: 
@@ -182,6 +202,10 @@ def get_commit_count_repo(repo:list[str])->dict[str, int]:
     return result
 
 def get_abstraction_of(files:dict, depth:int)->dict:
+    """
+    Abstracts away the file names to a specified depth. \n
+    The depth parameter specifies how many levels of the package name to keep. \n
+    """
     result = {}
     for file in files:
         file_new = "zeeguu."+top_level_package(module_name_from_file_path(file), depth)
@@ -192,22 +216,31 @@ def get_abstraction_of(files:dict, depth:int)->dict:
     return result
 
 def filter_files(files:list[str])->list[str]:
+    """
+    Takes a list of files, and filters out the ones that are not relevant for the view.
+    """
     result = []
     for file in files:
         if relevant_module(file):
             result.append(file)
     return result
 
-def get_test_modules(modules:list[str])->list[str]:
+def get_test_modules(files:list[str])->list[str]:
+    """
+    Takes a list of files, and filters out the ones that are not test files.
+    Returns the list of test files, converted to module names.
+    """
     result = []
-    for module in modules:
-        if "test" in module:
-            result.append(module_name_from_file_path(module))
+    for file in files:
+        if "test" in file:
+            result.append(module_name_from_file_path(file))
     return result
 
-CODE_ROOT_FOLDER = sys.argv[1]
 
 def get_tested_files(files:list[str], test_files:list[str])->dict[str, int]:
+    """
+    Takes a list of files 'a', and a list of test files 'b', and returns a dictionary with the number of tests that have tested each file from 'a'.
+    """
     result = {}
     for file in files:
         test_count = get_sum_tested(module_name_from_file_path(file), test_files)
@@ -216,27 +249,36 @@ def get_tested_files(files:list[str], test_files:list[str])->dict[str, int]:
     return result
 
 
-def get_sum_tested(file:str, test_files:list[str])->int:
+def get_sum_tested(module:str, test_files:list[str])->int:
+    """
+    Gets a Module and compares it to the testing files. Returns a count of how many testing files refer to it\n
+    The count is  based off of the naming convention of the files. \n
+    If a file is named 'zeeguu.core.model.bookmark.py', and a test file is named 'zeeguu.core.model.test_bookmark.py', then the file is considered tested.
+    """
     result = 0
-    file = file.split(".")[-1]
+    module = module.split(".")[-1]
     for test in test_files:
-        if file in test:
+        if module in test:
             result += 1
     return result
 
 
-# Define a function to interpolate between red and green based on a given value
-def interpolate_color(value):
+def interpolate_color(value:int)->tuple:
+    """
+    A function which will interpolate a color between red and green based on a value between 0 and 1.
+    """
     r = 1.0 - value  # Red component decreases as value increases
     g = value       # Green component increases as value increases
     b = 0.0         # Blue component stays constant
     return (r, g, b)
 
-def get_color(color_values, G):
+def get_color(color_values:dict, G:nx.DiGraph|nx.Graph)->list[tuple]:
+    """
+    creates a color map based on the values in the color_values dictionary, and all the nodes in G.\n
+    The color map is interpolated between red and green based on the value of the node in the color_values dictionary.
+    """
     color_map= []
     for node in G.nodes:
-        print("node: ", node)
-
         try: 
             val = color_values[str(node)]
         except:
@@ -247,9 +289,13 @@ def get_color(color_values, G):
         color_map.append(color)
     return color_map
 
+CODE_ROOT_FOLDER = sys.argv[1]
 def main():
+    """
+    The main function of the program. \n
+    """
 
-    # Testing 
+    # The tests that came with the google colab
     assert (top_level_package("zeeguu.core.model.util") == "zeeguu")
     assert (top_level_package("zeeguu.core.model.util", 2) == "zeeguu.core")
     # assert (file_path("zeeguu/core/model/user.py") == "/content/zeeguu-api/zeeguu/core/model/user.py")
@@ -267,7 +313,7 @@ def main():
     tested_files = get_tested_files(relevant_files, all_tests)
     abstracted_testing_files = get_abstraction_of(tested_files, depth-1)
 
-    print("======================== abstracted testing files =====================")
+    print("======================== Abstracted testing files =====================")
     for each in abstracted_testing_files:
         print(each, abstracted_testing_files[each])
     
@@ -275,7 +321,7 @@ def main():
     commits = get_commit_count_repo(relevant_files)
     abstracted_commits = get_abstraction_of(commits, depth-1)
 
-    print("============================ abstracted commits ==========================")
+    print("============================ Abstracted commits ==========================")
     for each in abstracted_commits:
         print(each, abstracted_commits[each])
 
@@ -284,18 +330,7 @@ def main():
 
     color_map = get_color(abstracted_testing_files, ADG)
 
-    for node in ADG.nodes:
-        print("node: ", node)
-
     draw_graph(ADG, (8,8), abstracted_commits, color_map, with_labels=True)
 
 if __name__ == "__main__":
     main()
-
-
-        
-    
-
-
-    
-    
